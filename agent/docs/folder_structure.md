@@ -34,6 +34,7 @@ obsidian-dev-agent/
    - `read_file.py`: File content retrieval
    - `search_code.py`: Codebase search capabilities
    - `update_devlog.py`: Development log management
+   - `git_tool.py`: Version control integration
 
 3. **`agent/vault/`** - Documentation storage
    - `vault_manager.py`: Documentation organization and retrieval
