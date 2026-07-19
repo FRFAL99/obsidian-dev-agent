@@ -1,47 +1,52 @@
 """
-Git operations tool for AI Software Engineer agent
+Git operations tool - uso interno (non esposto all'LLM in chat, vedi tool_registry.HIDDEN_TOOLS)
 """
 
-from typing import Dict, Any, List
+import os
 import logging
 import subprocess
-from ..agent_tools.base_tool import BaseTool
+from typing import Dict, Any
+
+from agent.tools.base_tool import BaseTool
 
 logger = logging.getLogger(__name__)
 
+
 class GitTool(BaseTool):
-    def __init__(self):
-        super().__init__(
-            name="git",
-            description="Perform Git operations such as commit, push, pull, and status checks"
-        )
-    
-    def execute(self, command: str, **kwargs) -> Dict[str, Any]:
-        """Execute a Git command"""
+    name = "git"
+    description = "Esegue operazioni Git (status, log, diff, commit, push) su una directory specifica"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "command": {"type": "string", "description": "Sottocomando git da eseguire, es. 'status' o 'log --oneline -5'"},
+            "cwd": {"type": "string", "description": "Directory di lavoro (repo) su cui eseguire il comando"},
+        },
+        "required": ["command", "cwd"],
+    }
+
+    def execute(self, command: str, cwd: str) -> Dict[str, Any]:
         try:
-            # Set up environment
             env = {
                 **os.environ,
-                'GIT_AUTHOR_NAME': 'AI Agent',
-                'GIT_AUTHOR_EMAIL': 'agent@example.com',
-                'GIT_COMMITTER_NAME': 'AI Agent',
-                'GIT_COMMITTER_EMAIL': 'agent@example.com'
+                'GIT_AUTHOR_NAME': 'Documentation Agent',
+                'GIT_AUTHOR_EMAIL': 'agent@local',
+                'GIT_COMMITTER_NAME': 'Documentation Agent',
+                'GIT_COMMITTER_EMAIL': 'agent@local',
             }
-            
-            # Execute command
+
             result = subprocess.run(
                 ['git'] + command.split(),
+                cwd=cwd,
                 capture_output=True,
                 text=True,
                 env=env,
-                **kwargs
             )
-            
+
             return {
                 'status': 'success',
                 'output': result.stdout,
                 'error': result.stderr,
-                'returncode': result.returncode
+                'returncode': result.returncode,
             }
         except Exception as e:
             logger.error(f"Git command failed: {str(e)}")
@@ -49,5 +54,5 @@ class GitTool(BaseTool):
                 'status': 'error',
                 'output': '',
                 'error': str(e),
-                'returncode': -1
+                'returncode': -1,
             }

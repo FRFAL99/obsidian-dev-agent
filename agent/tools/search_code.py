@@ -4,6 +4,14 @@ from agent.tools.base_tool import BaseTool
 class SearchCodeTool(BaseTool):
     name = "search_code"
     description = "Cerca testo nel codice"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "root": {"type": "string", "description": "Cartella radice da cui iniziare la ricerca"},
+            "query": {"type": "string", "description": "Testo da cercare (case-insensitive)"},
+        },
+        "required": ["root", "query"],
+    }
 
     def execute(self, root, query):
         results = []

@@ -1,0 +1,7 @@
+node_modules/
+mcp_env/
+__pycache__/
+*.pyc
+.env
+agent_memory.json
+/docs/
