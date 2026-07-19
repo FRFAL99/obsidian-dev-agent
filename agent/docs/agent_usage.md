@@ -8,8 +8,9 @@ tool disponibili.
 ## Setup
 
 ```bash
-# 1. Installare le dipendenze Python (dentro il venv del progetto)
-mcp_env/bin/pip install -r requirements.txt
+# 1. Installare le dipendenze Python nel venv del progetto (mcp_env non include pip al suo
+# interno: si usa il pip di sistema puntato al python del venv con --python)
+python3 -m pip --python mcp_env/bin/python3 install -r requirements.txt
 
 # 2. Configurare l'ambiente
 cp .env.example .env
