@@ -25,8 +25,7 @@ def read_note(relative_path: str) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def append_note(relative_path: str, text: str) -> str:
-    _validate_root()
+def _write_append(relative_path: str, text: str) -> Path:
     p = ROOT / relative_path
     p.parent.mkdir(parents=True, exist_ok=True)
     needs_leading_newline = p.exists() and p.stat().st_size > 0
@@ -34,26 +33,56 @@ def append_note(relative_path: str, text: str) -> str:
         if needs_leading_newline:
             f.write("\n")
         f.write(text)
-    _commit_and_push(p)
-    return str(p)
+    return p
 
 
-def create_note_if_missing(relative_path: str, text: str) -> str:
-    _validate_root()
+def _write_create(relative_path: str, text: str) -> Path:
     p = ROOT / relative_path
     if p.exists():
         raise FileExistsError(f"Il file esiste già nel vault: {p}")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
-    _commit_and_push(p)
+    return p
+
+
+def append_note(relative_path: str, text: str) -> str:
+    _validate_root()
+    p = _write_append(relative_path, text)
+    _commit_and_push([p], f"docs: aggiorna {p.relative_to(ROOT)}")
     return str(p)
 
 
-def _commit_and_push(absolute_path: Path):
-    """Commit + push mirato al SOLO file toccato. Non fa mai `git add -A`/`.`,
+def create_note_if_missing(relative_path: str, text: str) -> str:
+    _validate_root()
+    p = _write_create(relative_path, text)
+    _commit_and_push([p], f"docs: aggiorna {p.relative_to(ROOT)}")
+    return str(p)
+
+
+def create_files_and_commit(files: dict, message: str) -> list:
+    """files: {relative_path: content}. Pre-check 'tutto o niente': se anche un solo file
+    esiste già, solleva FileExistsError PRIMA di scrivere qualsiasi cosa (niente scaffold
+    parziali). Un solo commit+push copre tutti i file scritti insieme."""
+    _validate_root()
+    paths = {rel: ROOT / rel for rel in files}
+    existing = [rel for rel, p in paths.items() if p.exists()]
+    if existing:
+        raise FileExistsError(f"File già esistenti, scrittura multi-file annullata: {existing}")
+    written = []
+    for rel, content in files.items():
+        p = paths[rel]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        written.append(p)
+    _commit_and_push(written, message)
+    return [str(p) for p in written]
+
+
+def _commit_and_push(absolute_paths: list, message: str):
+    """Commit + push mirato ai SOLI file toccati. Non fa mai `git add -A`/`.`,
     per non trascinare dentro il rumore di .obsidian/workspace.json e delle
     cache .smart-env/*.ajson che cambiano ad ogni apertura di Obsidian."""
-    rel = absolute_path.relative_to(ROOT)
+    rels = [p.relative_to(ROOT) for p in absolute_paths]
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "Documentation Agent",
@@ -63,21 +92,21 @@ def _commit_and_push(absolute_path: Path):
     }
     try:
         subprocess.run(
-            ["git", "add", str(rel)],
+            ["git", "add"] + [str(r) for r in rels],
             cwd=ROOT, check=True, capture_output=True, text=True, env=env,
         )
         result = subprocess.run(
-            ["git", "commit", "-m", f"docs: aggiorna {rel}"],
+            ["git", "commit", "-m", message],
             cwd=ROOT, capture_output=True, text=True, env=env,
         )
         if result.returncode != 0 and "nothing to commit" not in result.stdout:
-            logger.warning(f"git commit fallito su {rel}: {result.stderr}")
+            logger.warning(f"git commit fallito su {rels}: {result.stderr}")
             return
         push = subprocess.run(
             ["git", "push"],
             cwd=ROOT, capture_output=True, text=True, env=env,
         )
         if push.returncode != 0:
-            logger.error(f"git push fallito per {rel}: {push.stderr}")
+            logger.error(f"git push fallito per {rels}: {push.stderr}")
     except subprocess.CalledProcessError as e:
-        logger.error(f"git add fallito su {rel}: {e.stderr}")
+        logger.error(f"git add fallito su {rels}: {e.stderr}")

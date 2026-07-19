@@ -3,7 +3,7 @@
 Agente locale che chatta con un LLM (llama.cpp, modello configurabile) e può scrivere
 documentazione direttamente nel vault Obsidian del progetto su cui stai lavorando, tramite
 tool-calling: durante la conversazione l'LLM decide autonomamente se e quando chiamare uno dei
-tool disponibili.
+tool disponibili — inclusa la gestione dei progetti stessi (crearli, elencarli, cambiare quello attivo).
 
 ## Setup
 
@@ -16,7 +16,7 @@ python3 -m pip --python mcp_env/bin/python3 install -r requirements.txt
 cp .env.example .env
 # poi modificare .env con i tuoi percorsi reali:
 #   VAULT_PATH=/percorso/al/tuo/vault-obsidian
-#   PROJECTS_PATH=/percorso/ai/tuoi/repo
+#   PROJECTS_PATH=/percorso/base/dove/vivono/i/tuoi/repo   (usato da init_project per l'auto-discovery)
 #   LLM_BASE_URL=http://localhost:8080/v1   (endpoint OpenAI-compatible, es. llama.cpp)
 #   LLM_MODEL=qwen3
 
@@ -33,31 +33,52 @@ Apre una chat Gradio su `http://localhost:7860`.
 
 ## Contesto di progetto
 
-Il vault deve avere una struttura per progetto:
+Il vault ha una struttura per progetto, più un file di regole condiviso a livello di vault:
 
 ```
 vault/
-├── .current_project              # nome del progetto attivo, es. "antichita-fallavena"
+├── .current_project              # nome del progetto attivo, es. "curriculum"
+├── ai/
+│   └── global_rules.md            # regole comuni a TUTTI i progetti, iniettate sempre
 └── projects/
     └── <nome-progetto>/
         ├── README.md, architettura.md, devlog.md, TODO.md
         └── ai/
             ├── project.json        # {"name", "repo_path", "vault_path", "default_branch", "languages"}
-            ├── context.md, rules.md, memory.md, prompts.md
+            ├── context.md, memory.md
+            └── rules.md            # opzionale: solo eccezioni/convenzioni specifiche di QUESTO progetto
 ```
 
-All'avvio di ogni richiesta, l'agente legge `.current_project` per sapere qual è il progetto
-attivo, poi inietta come contesto di sistema `README.md`, `architettura.md`, `ai/context.md`,
-`ai/rules.md`, `ai/memory.md` del progetto corrente (se presenti). Se `.current_project` o
-`ai/project.json` mancano, l'agente funziona comunque ma senza contesto di progetto.
+`repo_path` è distinto da `vault_path`: il primo punta al codice sorgente reale sul filesystem
+(usato da `read_file`/`search_code`), il secondo alla cartella del progetto dentro il vault
+(usato da `write_doc`/`update_devlog`). Non vanno confusi.
+
+All'avvio di ogni richiesta, l'agente inietta sempre `vault/ai/global_rules.md` (se presente),
+poi — se c'è un progetto attivo — anche `README.md`, `architettura.md`, `ai/context.md`,
+`ai/rules.md`, `ai/memory.md` del progetto corrente (quelli che esistono). Se `.current_project`
+o `ai/project.json` mancano, l'agente funziona comunque, con le sole regole globali.
 
 ## Tool disponibili in chat
 
 L'LLM può chiamare questi tool durante la conversazione (schemi generati automaticamente da
 `agent/tool_registry.py`):
 
-- **`read_file(path)`** — legge un file dal filesystem.
-- **`search_code(root, query)`** — cerca una stringa (case-insensitive) nei file sotto `root`.
+**Gestione progetti**
+- **`list_projects()`** — elenca i progetti nel vault (nome, breve descrizione, se completo, quale è attivo).
+- **`switch_project(name)`** — cambia il progetto attivo (deve già esistere). Scrive solo
+  `.current_project`: è stato locale, non genera commit nel vault.
+- **`init_project(name, repo_path=None)`** — crea un nuovo progetto nel vault con lo scaffold
+  minimo (`ai/project.json`, README, architettura, devlog, TODO, `ai/context.md`) in un unico
+  commit. Se `repo_path` è omesso, cerca automaticamente il repository sotto `PROJECTS_PATH`
+  (per nome, fino a 3 livelli di profondità); se trova 0 o più match, chiede di specificarlo esplicitamente.
+
+**Lettura codice**
+- **`read_file(path)`** — legge un file. Path assoluto: usato così com'è. Path relativo: risolto
+  contro il `repo_path` del progetto attivo (con protezione anti path-traversal).
+- **`search_code(query, root=None)`** — cerca una stringa (case-insensitive) sotto `root`; se
+  omesso, usa il `repo_path` del progetto attivo. Stessa risoluzione assoluto/relativo di `read_file`.
+
+**Scrittura nel vault**
 - **`update_devlog(path, content)`** — aggiunge una entry datata a `devlog.md` del progetto
   corrente. Sempre in append, non sovrascrive mai.
 - **`write_doc(path, content, mode)`** — crea o aggiorna un file Markdown nel progetto corrente
@@ -65,17 +86,22 @@ L'LLM può chiamare questi tool durante la conversazione (schemi generati automa
   esiste già). Non sovrascrive mai contenuto esistente.
 
 Il tool `git` esiste nel codice ma **non è esposto all'LLM in chat** (è riservato a uso interno):
-il commit/push sul vault è già automatico dentro `write_doc`/`update_devlog`, non serve che il
-modello lo richiami esplicitamente, ed evitare di esporlo previene che un comando git arbitrario
-venga eseguito da testo generato dal modello.
+il commit/push sul vault è già automatico dentro `write_doc`/`update_devlog`/`init_project`, non
+serve che il modello lo richiami esplicitamente, ed evitare di esporlo previene che un comando git
+arbitrario venga eseguito da testo generato dal modello.
 
 ## Regole di scrittura nel vault
 
-- `path` viene sempre risolto contro la cartella del progetto **corrente**, mai contro la root
-  del vault: un tentativo di uscire dal progetto (es. `../../.obsidian/workspace.json`) viene
-  rifiutato esplicitamente.
-- Ogni scrittura riuscita genera un commit + push automatico nel repo del vault, mirato al solo
-  file toccato (mai `git add -A`), con autore `Documentation Agent <agent@local>` e messaggio
-  `docs: aggiorna <path>`. Se il push fallisce (es. rete assente), il file resta comunque scritto
-  e committato in locale: nessun dato viene perso, il push va ripetuto al giro successivo.
+- `path` per `write_doc`/`update_devlog` viene sempre risolto contro la cartella del progetto
+  **corrente**, mai contro la root del vault: un tentativo di uscire dal progetto (es.
+  `../../.obsidian/workspace.json`) viene rifiutato esplicitamente. Stessa protezione per i path
+  relativi di `read_file`/`search_code`, ma contro il `repo_path` invece che il `vault_path`.
+- Ogni scrittura riuscita genera un commit + push automatico nel repo del vault, mirato ai soli
+  file toccati (mai `git add -A`), con autore `Documentation Agent <agent@local>`. `init_project`
+  fa un solo commit per tutti i file dello scaffold; `write_doc`/`update_devlog` un commit per
+  singola scrittura, messaggio `docs: aggiorna <path>`. Se il push fallisce (es. rete assente), i
+  file restano comunque scritti e committati in locale: nessun dato viene perso, il push va
+  ripetuto al giro successivo.
 - `devlog.md` è append-only per design: non esiste un parametro che permetta di sovrascriverlo.
+- `switch_project` è l'unica eccezione: scrive `.current_project` senza passare da un commit
+  (è stato locale, non contenuto documentale).

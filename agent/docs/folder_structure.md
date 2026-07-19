@@ -18,13 +18,16 @@ obsidian-dev-agent/
     ├── docs/                     # questa documentazione
     ├── tools/
     │   ├── base_tool.py           # classe base: name, description, parameters (JSON Schema), execute()
-    │   ├── read_file.py            # legge un file dal filesystem
-    │   ├── search_code.py           # cerca una stringa nei file sotto una cartella
-    │   ├── update_devlog.py          # aggiunge una entry a devlog.md del progetto corrente (append-only)
-    │   ├── write_doc.py               # crea/aggiorna un file Markdown nel progetto corrente
-    │   └── git_tool.py                 # operazioni git generiche; NON esposto all'LLM in chat (uso interno)
+    │   ├── list_projects.py        # elenca i progetti nel vault
+    │   ├── switch_project.py        # cambia il progetto attivo (.current_project)
+    │   ├── init_project.py           # crea un nuovo progetto (scaffold + auto-discovery via PROJECTS_PATH)
+    │   ├── read_file.py                # legge un file (assoluto, o relativo al repo_path del progetto attivo)
+    │   ├── search_code.py               # cerca una stringa nel codice (idem: assoluto o relativo)
+    │   ├── update_devlog.py               # aggiunge una entry a devlog.md del progetto corrente (append-only)
+    │   ├── write_doc.py                    # crea/aggiorna un file Markdown nel progetto corrente
+    │   └── git_tool.py                      # operazioni git generiche; NON esposto all'LLM in chat (uso interno)
     └── vault/
-        └── vault_manager.py            # read/append/create note nel vault + commit/push automatico mirato
+        └── vault_manager.py                 # read/append/create note (singole o multi-file) + commit/push automatico mirato
 ```
 
 ## Cosa è stato rimosso e perché

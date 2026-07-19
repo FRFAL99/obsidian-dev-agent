@@ -80,18 +80,45 @@ Punti di attenzione:
 
 ## Sync col vault (`agent/vault/vault_manager.py`)
 
-Ogni scrittura (`append_note` / `create_note_if_missing`) esegue in coda `_commit_and_push`, che:
+`_commit_and_push(paths, message)` accetta una LISTA di path (uno o più) e fa un solo commit+push
+che li copre tutti:
 
-1. Fa `git add` **solo** del file appena scritto (mai `git add -A`/`.`), per non includere nel
-   commit il rumore di `.obsidian/workspace.json` o delle cache `.smart-env/*.ajson` che cambiano
-   ad ogni apertura di Obsidian.
-2. Committa con autore `Documentation Agent <agent@local>` e messaggio `docs: aggiorna <path>`.
-3. Fa `push`; se fallisce (rete assente, conflitto) logga l'errore ma non solleva eccezioni: il
-   file è comunque salvato e committato in locale, il push verrà ritentato al prossimo giro.
+1. Fa `git add` **solo** dei file effettivamente toccati (mai `git add -A`/`.`), per non includere
+   nel commit il rumore di `.obsidian/workspace.json` o delle cache `.smart-env/*.ajson` che
+   cambiano ad ogni apertura di Obsidian.
+2. Committa con autore `Documentation Agent <agent@local>`.
+3. Fa `push`; se fallisce (rete assente, conflitto) logga l'errore ma non solleva eccezioni: i
+   file sono comunque salvati e committati in locale, il push verrà ritentato al prossimo giro.
 
-## Path-safety
+`append_note`/`create_note_if_missing` (usati da `update_devlog`/`write_doc`) chiamano
+`_commit_and_push` con un solo file, messaggio `docs: aggiorna <path>`. `create_files_and_commit`
+(usato da `init_project`) scrive più file in un colpo solo con un pre-check "tutto o niente" (se
+anche uno solo esiste già, niente viene scritto) e un unico commit `docs: inizializza progetto <nome>`.
 
-`agent/project_manager.py::resolve_note_path()` risolve ogni `path` ricevuto da un tool contro la
-cartella del progetto **corrente** (non contro la root del vault) e rifiuta con `ValueError` ogni
-percorso che, una volta risolto, finirebbe fuori da quella cartella. Necessario perché `path`
-arriva in ultima istanza da testo utente/LLM non fidato.
+## Path-safety: due assi paralleli
+
+Esistono due percorsi di risoluzione path indipendenti in `agent/project_manager.py`, da non confondere:
+
+- **`resolve_note_path()`** — per le **scritture** (`write_doc`/`update_devlog`): risolve `path`
+  contro `vault_path` (cartella del progetto nel vault Obsidian) e rifiuta con `ValueError` ogni
+  percorso che uscirebbe da quella cartella.
+- **`resolve_repo_path()`** — per le **letture** (`read_file`/`search_code`, quando il path non è
+  assoluto): risolve `path` contro `repo_path` (cartella del codice sorgente reale sul filesystem,
+  letta da `ai/project.json`) con la stessa protezione anti path-traversal.
+
+In entrambi i casi il path arriva in ultima istanza da testo utente/LLM non fidato, quindi va
+sempre validato prima di toccare il filesystem.
+
+## Gestione progetti (`list_projects` / `switch_project` / `init_project`)
+
+- `ProjectManager.list_projects()` elenca `VAULT_PATH/projects/*/` con `ai/project.json` valido,
+  marcando `active` (confronto con `.current_project`) e `complete` (presenza di
+  README/architettura/devlog/TODO) senza escludere i progetti incompleti.
+- `ProjectManager.switch_to(name)` valida che il nome sia uno slug sicuro (`^[a-zA-Z0-9_-]+$`,
+  anti path-traversal sul nome stesso) e che il progetto esista, poi scrive `.current_project`.
+  È l'unica scrittura che **non** passa da un commit: è stato locale (quale progetto sto
+  guardando ora), non contenuto documentale.
+- `ProjectManager.discover_repo_candidates(name_hint)` — usato da `init_project` quando
+  `repo_path` è omesso — cerca ricorsivamente (fino a 3 livelli, escludendo `node_modules`,
+  `.git`, `venv`, `mcp_env`, `__pycache__`, `dist`, `build`) cartelle con un `.git` il cui nome
+  contiene `name_hint`. Se il match non è unico, l'errore elenca i candidati invece di indovinare.
