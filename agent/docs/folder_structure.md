@@ -4,17 +4,18 @@
 obsidian-dev-agent/
 ├── .env.example           # template variabili d'ambiente (copiare in .env)
 ├── .gitignore
-├── requirements.txt        # gradio, openai, python-dotenv, requests, gitpython
+├── requirements.txt        # gradio, openai, python-dotenv, requests, gitpython, mcp
 ├── README.md
 └── agent/
     ├── __init__.py
-    ├── agent.py             # classe Agent: loop di tool-calling (PromptBuilder + chat + ToolRegistry)
-    ├── config.py             # legge .env: LLM_BASE_URL, LLM_MODEL, VAULT_PATH, PROJECTS_PATH
-    ├── llm.py                 # client OpenAI-compatible verso llama.cpp locale
-    ├── prompt_builder.py       # costruisce i messaggi di sistema dal contesto del progetto corrente
-    ├── project_manager.py      # legge .current_project / ai/project.json dal vault, risolve path in sicurezza
-    ├── server.py                # entrypoint: Gradio ChatInterface che usa Agent()
-    ├── tool_registry.py          # carica dinamicamente i tool da agent/tools/, genera gli schemi per l'LLM
+    ├── mcp_server.py          # ENTRYPOINT PRINCIPALE: server MCP (FastMCP, stdio) — usabile da Claude Code o qualunque client MCP
+    ├── agent.py                # classe Agent: loop di tool-calling per il chatbot Gradio (legacy/opzionale)
+    ├── config.py                # legge .env: LLM_BASE_URL, LLM_MODEL, VAULT_PATH, PROJECTS_PATH
+    ├── llm.py                    # client OpenAI-compatible verso llama.cpp locale (solo chatbot Gradio)
+    ├── prompt_builder.py          # costruisce i messaggi di sistema dal contesto del progetto corrente (solo chatbot Gradio)
+    ├── project_manager.py          # legge .current_project / ai/project.json dal vault, risolve path in sicurezza
+    ├── server.py                    # entrypoint chatbot Gradio (legacy/opzionale): ChatInterface che usa Agent()
+    ├── tool_registry.py              # carica dinamicamente i tool da agent/tools/, genera gli schemi per il chatbot Gradio
     ├── docs/                     # questa documentazione
     ├── tools/
     │   ├── base_tool.py           # classe base: name, description, parameters (JSON Schema), execute()

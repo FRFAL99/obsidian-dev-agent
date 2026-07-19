@@ -1,9 +1,16 @@
 # Obsidian Dev Agent — Guida d'uso
 
-Agente locale che chatta con un LLM (llama.cpp, modello configurabile) e può scrivere
-documentazione direttamente nel vault Obsidian del progetto su cui stai lavorando, tramite
-tool-calling: durante la conversazione l'LLM decide autonomamente se e quando chiamare uno dei
-tool disponibili — inclusa la gestione dei progetti stessi (crearli, elencarli, cambiare quello attivo).
+Agente che scrive documentazione direttamente nel vault Obsidian del progetto su cui stai
+lavorando, tramite tool-calling: chi ti chiede di documentare decide autonomamente se e quando
+chiamare uno dei tool disponibili — inclusa la gestione dei progetti stessi (crearli, elencarli,
+cambiare quello attivo).
+
+Due modi di usarlo:
+- **Server MCP** (`agent/mcp_server.py`, consigliato) — gli stessi tool richiamabili direttamente
+  da Claude Code o da qualunque altro client MCP, dentro la chat con cui stai già lavorando.
+  Vedi `agent/docs/mcp_server.md`.
+- **Chatbot Gradio standalone** (`agent/server.py`, modalità legacy/opzionale) — chat separata con
+  un LLM locale (llama.cpp), descritta più sotto. Utile per uso offline senza un client MCP.
 
 ## Setup
 
@@ -23,13 +30,14 @@ cp .env.example .env
 # 3. Assicurarsi che il server LLM (llama.cpp) sia in ascolto su LLM_BASE_URL
 ```
 
-## Avvio
+## Avvio (chatbot Gradio standalone)
 
 ```bash
 mcp_env/bin/python -m agent.server
 ```
 
-Apre una chat Gradio su `http://localhost:7860`.
+Apre una chat Gradio su `http://localhost:7860`. Per usare invece il server MCP (consigliato),
+vedi `agent/docs/mcp_server.md`.
 
 ## Contesto di progetto
 
@@ -58,10 +66,10 @@ poi — se c'è un progetto attivo — anche `README.md`, `architettura.md`, `ai
 `ai/rules.md`, `ai/memory.md` del progetto corrente (quelli che esistono). Se `.current_project`
 o `ai/project.json` mancano, l'agente funziona comunque, con le sole regole globali.
 
-## Tool disponibili in chat
+## Tool disponibili
 
-L'LLM può chiamare questi tool durante la conversazione (schemi generati automaticamente da
-`agent/tool_registry.py`):
+Stessi tool in entrambe le modalità (nel chatbot Gradio via `agent/tool_registry.py`, nel server
+MCP via i wrapper in `agent/mcp_server.py` — stessa logica sottostante in entrambi i casi):
 
 **Gestione progetti**
 - **`list_projects()`** — elenca i progetti nel vault (nome, breve descrizione, se completo, quale è attivo).
